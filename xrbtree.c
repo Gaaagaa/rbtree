@@ -166,7 +166,7 @@ typedef struct x_rbtree_t
  * 
  * @param [in ] xrbt_lkey : 比较操作的左值。
  * @param [in ] xrbt_rkey : 比较操作的右值。
- * @param [out] xrbt_size : xrbt_lkey（or xrbt_rkey） 缓存大小。
+ * @param [in ] xrbt_size : xrbt_lkey（or xrbt_rkey） 缓存大小。
  * 
  * @return xrbt_bool_t
  *         - 若 xrbt_lkey < xrbt_rkey ，返回 XRBT_TRUE；
