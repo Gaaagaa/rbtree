@@ -40,13 +40,17 @@ XRBTREE_TYPE_API(int)
 
 long long xalloc_count = 0;
 
-xrbt_void_t * xalloc_byte_xfunc_alloc(xrbt_vkey_t xrbt_vkey, xrbt_size_t xst_nsize)
+xrbt_void_t * xalloc_memalloc(xrbt_vkey_t xrbt_vkey,
+                              xrbt_size_t xst_nsize,
+                              xrbt_ctxt_t xrbt_ctxt)
 {
     xalloc_count += 1;
     return malloc(xst_nsize);
 }
 
-xrbt_void_t xalloc_byte_xfunc_dealloc(xrbt_void_t * xrbt_node, xrbt_size_t xst_nsize)
+xrbt_void_t xalloc_memfree(xrbt_void_t * xrbt_node,
+                           xrbt_size_t xst_nsize,
+                           xrbt_ctxt_t xrbt_ctxt)
 {
     xalloc_count -= 1;
     free(xrbt_node);
@@ -61,11 +65,11 @@ void test_xrbtree(int max_insert)
 
     //======================================
 
-    xrbt_allocator_t xtree_alloc = xrbtree_default_allocator_int();
-    xtree_alloc.xfunc_alloc   = &xalloc_byte_xfunc_alloc;
-    xtree_alloc.xfunc_dealloc = &xalloc_byte_xfunc_dealloc;
+    xrbt_callback_t xtree_alloc = xrbtree_default_callback_int(XRBT_NULL);
+    xtree_alloc.xfunc_n_memalloc = &xalloc_memalloc;
+    xtree_alloc.xfunc_n_memfree  = &xalloc_memfree;
 
-    x_rbtree_ptr xtree_ptr = xrbtree_create_int(XRBT_NULL, &xtree_alloc);
+    x_rbtree_ptr xtree_ptr = xrbtree_create_int(&xtree_alloc);
 
     // insert
     xtm_begin = xtime_clock::now();
@@ -97,10 +101,11 @@ void test_xrbtree(int max_insert)
     // find
     testvalue = 0;
     xtm_begin = xtime_clock::now();
+    x_rbnode_iter xiter_end = xrbtree_end(xtree_ptr);
     for (int i = 1; i <= max_insert; i += 1)
     {
         x_rbnode_iter xiter = xrbtree_find_int(xtree_ptr, i);
-        if (xiter != xrbtree_end(xtree_ptr))
+        if (xiter != xiter_end)
             testvalue += xrbtree_ikey_int(xiter);
     }
     xtm_value = xtime_dcast(xtime_clock::now() - xtm_begin);

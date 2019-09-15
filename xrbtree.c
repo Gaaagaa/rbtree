@@ -83,7 +83,7 @@ typedef struct x_rbtree_node_t
  */
 typedef struct x_rbtree_nil_t
 {
-    xrbt_uint32_t xut_color : 1;  ///< 颜色值
+    xrbt_uint32_t xut_color :  1; ///< 颜色值
     xrbt_uint32_t xut_ksize : 31; ///< 索引键缓存大小（对于 NIL 节点，该值始终为 0）
     x_rbnode_iter xiter_parent;   ///< 父节点
     x_rbnode_iter xiter_left;     ///< 左子树
@@ -97,9 +97,8 @@ typedef struct x_rbtree_nil_t
  */
 typedef struct x_rbtree_t
 {
-    xrbt_size_t      xst_ksize;    ///< 节点索引键的缓存大小（按 字节 计数）
-    xfunc_vkey_cmp_t xfunc_kcmp;   ///< 节点索引键的比较操作 的回调函数
-    xrbt_allocator_t xallocator;   ///< 节点缓存分配器
+    xrbt_size_t      xst_ksize;    ///< 节点索引键的缓存大小
+    xrbt_callback_t  xcallback;    ///< 节点操作的相关回调函数
     xrbt_size_t      xst_count;    ///< 当前节点数量
     x_rbtree_nil_t   xnode_nil;    ///< nil 节点
     x_rbnode_iter    xiter_root;   ///< 根节点
@@ -162,20 +161,92 @@ typedef struct x_rbtree_t
 
 /**********************************************************/
 /**
- * @brief 默认的 比较节点对象的索引键值的回调操作接口。
+ * @brief 默认的 申请节点对象缓存的回调函数。
+ *
+ * @param [in ] xrbt_vkey : 请求申请缓存的节点索引键（插入操作时回调回来的索引键）。
+ * @param [in ] xst_nsize : 节点对象所需缓存的大小（即 请求申请缓存的大小）。
+ * @param [in ] xrbt_ctxt : 回调的上下文标识。
  * 
+ * @return xrbt_void_t *
+ *         - 节点对象缓存。
+ */
+static xrbt_void_t * xrbt_comm_node_memalloc(
+                                xrbt_vkey_t xrbt_vkey,
+                                xrbt_size_t xst_nsize,
+                                xrbt_ctxt_t xrbt_ctxt)
+{
+    return (xrbt_void_t *)malloc(xst_nsize);
+}
+
+/**********************************************************/
+/**
+ * @brief 默认的 释放节点对象缓存的回调函数。
+ *
+ * @param [in ] xrbt_node : 待释放的节点对象缓存。
+ * @param [in ] xst_nsize : 节点对象缓存的大小。
+ */
+static xrbt_void_t xrbt_comm_node_memfree(
+                            xrbt_void_t * xrbt_node,
+                            xrbt_size_t xst_nsize,
+                            xrbt_ctxt_t xrbt_ctxt)
+{
+    free(xrbt_node);
+}
+
+/**********************************************************/
+/**
+ * @brief 默认的 拷贝节点对象的索引键值的回调函数。
+ *
+ * @param [out] xrbt_dkey : 目标的索引键缓存。
+ * @param [in ] xrbt_skey : 源数据的索引键缓存。
+ * @param [in ] xrbt_size : 索引键缓存大小。
+ * @param [in ] xbt_move  : 是否采用右值 move 操作进行数据拷贝（用于兼容 C++11 后的对象右值引用操作）。
+ * @param [in ] xrbt_ctxt : 回调的上下文标识。
+ */
+static xrbt_void_t xrbt_comm_vkey_copyfrom(
+                            xrbt_vkey_t xrbt_dkey,
+                            xrbt_vkey_t xrbt_skey,
+                            xrbt_size_t xrbt_size,
+                            xrbt_bool_t xbt_move ,
+                            xrbt_ctxt_t xrbt_ctxt)
+{
+    memcpy(xrbt_dkey, xrbt_skey, xrbt_size);
+}
+
+/**********************************************************/
+/**
+ * @brief 默认的 析构节点对象的索引键值的回调函数。
+ *
+ * @param [out] xrbt_vkey : 索引键缓存。
+ * @param [in ] xrbt_size : 索引键缓存大小。
+ * @param [in ] xrbt_ctxt : 回调的上下文标识。
+ */
+static xrbt_void_t xrbt_comm_vkey_destruct(
+                            xrbt_vkey_t xrbt_vkey,
+                            xrbt_size_t xrbt_size,
+                            xrbt_ctxt_t xrbt_ctxt)
+{
+
+}
+
+/**********************************************************/
+/**
+ * @brief 默认的 比较节点索引键值的回调函数类型。
+ *
  * @param [in ] xrbt_lkey : 比较操作的左值。
  * @param [in ] xrbt_rkey : 比较操作的右值。
  * @param [in ] xrbt_size : xrbt_lkey（or xrbt_rkey） 缓存大小。
- * 
+ * @param [in ] xrbt_ctxt : 回调的上下文标识。
+ *
  * @return xrbt_bool_t
  *         - 若 xrbt_lkey < xrbt_rkey ，返回 XRBT_TRUE；
  *         - 否则 返回 XRBT_FALSE。
  */
 static xrbt_bool_t xrbt_comm_vkey_compare(
-                                xrbt_vkey_t xrbt_lkey,
-                                xrbt_vkey_t xrbt_rkey,
-                                xrbt_size_t xrbt_size)
+                            xrbt_vkey_t xrbt_lkey,
+                            xrbt_vkey_t xrbt_rkey,
+                            xrbt_size_t xrbt_size,
+                            xrbt_ctxt_t xrbt_ctxt)
 {
     register xrbt_byte_t * xbt_mlptr = (xrbt_byte_t *)xrbt_lkey;
     register xrbt_byte_t * xbt_mrptr = (xrbt_byte_t *)xrbt_rkey;
@@ -189,62 +260,6 @@ static xrbt_bool_t xrbt_comm_vkey_compare(
     }
 
     return XRBT_FALSE;
-}
-
-/**********************************************************/
-/**
- * @brief 默认的 申请节点对象缓存的回调接口。
- * 
- * @param [in ] xrbt_vkey : 请求申请缓存的节点索引键（插入操作时回调回来的索引键）。
- * @param [in ] xst_nsize : 节点对象所需缓存的大小（即 请求申请缓存的大小）。
- */
-static xrbt_void_t * xrbt_comm_alloc(xrbt_vkey_t xrbt_vkey,
-                                     xrbt_size_t xst_nsize)
-{
-    return (xrbt_void_t *)malloc(xst_nsize);
-}
-
-/**********************************************************/
-/**
- * @brief 释放节点对象缓存的回调接口。
- * 
- * @param [in ] xrbt_node : 待释放的节点对象缓存。
- * @param [in ] xst_nsize : 节点对象缓存的大小。
- */
-static xrbt_void_t xrbt_comm_dealloc(xrbt_void_t * xrbt_node,
-                                     xrbt_size_t   xst_nsize)
-{
-    if (XRBT_NULL != xrbt_node)
-        free(xrbt_node);
-}
-
-/**********************************************************/
-/**
- * @brief 默认的 拷贝节点对象的索引键值的回调操作接口。
- * 
- * @param [out] xrbt_dkey : 目标的索引键缓存。
- * @param [in ] xrbt_skey : 源数据的索引键缓存。
- * @param [in ] xrbt_size : 索引键缓存大小。
- * @param [in ] xbt_move  : 是否采用右值 move 操作进行数据拷贝。
- */
-static xrbt_void_t xrbt_comm_vkey_copyfrom(
-                                xrbt_vkey_t xrbt_dkey,
-                                xrbt_vkey_t xrbt_skey,
-                                xrbt_size_t xrbt_size,
-                                xrbt_bool_t xbt_move)
-{
-    memcpy(xrbt_dkey, xrbt_skey, xrbt_size);
-}
-
-/**********************************************************/
-/**
- * @brief 默认的 析构节点对象的索引键值的回调操作接口。
- */
-static xrbt_void_t xrbt_comm_vkey_destruct(
-                                xrbt_vkey_t xrbt_vkey,
-                                xrbt_size_t xrbt_size)
-{
-
 }
 
 //====================================================================
@@ -292,10 +307,15 @@ static xrbt_void_t xrbtree_dealloc(x_rbtree_ptr xthis_ptr,
 {
     XASSERT(X_NOT_NIL(xiter_node));
 
-    xthis_ptr->xallocator.xfunc_vkey_destruct(
-        X_GET_VKEY(xiter_node), xthis_ptr->xst_ksize);
-    xthis_ptr->xallocator.xfunc_dealloc(
-        xiter_node, sizeof(x_rbtree_node_t) + xthis_ptr->xst_ksize);
+    xthis_ptr->xcallback.xfunc_k_destruct(
+        X_GET_VKEY(xiter_node),
+        xthis_ptr->xst_ksize,
+        xthis_ptr->xcallback.xctxt_t_callback);
+
+    xthis_ptr->xcallback.xfunc_n_memfree(
+        xiter_node,
+        sizeof(x_rbtree_node_t) + xthis_ptr->xst_ksize,
+        xthis_ptr->xcallback.xctxt_t_callback);
 }
 
 /**********************************************************/
@@ -642,18 +662,22 @@ static xrbt_void_t xrbtree_update(x_rbtree_ptr xthis_ptr,
         xthis_ptr->xst_count += 1;
 
         if (X_IS_NIL(xthis_ptr->xiter_lnode) ||
-            xthis_ptr->xfunc_kcmp(X_GET_VKEY(xiter_where),
+            xthis_ptr->xcallback.xfunc_k_lesscomp(
+                                  X_GET_VKEY(xiter_where),
                                   X_GET_VKEY(xthis_ptr->xiter_lnode),
-                                  xthis_ptr->xst_ksize)
+                                  xthis_ptr->xst_ksize,
+                                  xthis_ptr->xcallback.xctxt_t_callback)
            )
         {
             xthis_ptr->xiter_lnode = xiter_where;
         }
 
         if (X_IS_NIL(xthis_ptr->xiter_rnode) ||
-            xthis_ptr->xfunc_kcmp(X_GET_VKEY(xthis_ptr->xiter_rnode),
+            xthis_ptr->xcallback.xfunc_k_lesscomp(
+                                  X_GET_VKEY(xthis_ptr->xiter_rnode),
                                   X_GET_VKEY(xiter_where),
-                                  xthis_ptr->xst_ksize)
+                                  xthis_ptr->xst_ksize,
+                                  xthis_ptr->xcallback.xctxt_t_callback)
            )
         {
             xthis_ptr->xiter_rnode = xiter_where;
@@ -689,9 +713,11 @@ static x_rbnode_iter xrbtree_dock_pos(x_rbtree_ptr xthis_ptr,
     {
         xiter_where = xiter_ntrav;
 
-        xbt_to_left = xthis_ptr->xfunc_kcmp(xrbt_vkey,
-                                            X_GET_VKEY(xiter_ntrav),
-                                            xthis_ptr->xst_ksize);
+        xbt_to_left = xthis_ptr->xcallback.xfunc_k_lesscomp(
+                                     xrbt_vkey,
+                                     X_GET_VKEY(xiter_ntrav),
+                                     xthis_ptr->xst_ksize,
+                                     xthis_ptr->xcallback.xctxt_t_callback);
 
         xiter_ntrav = xbt_to_left ? xiter_ntrav->xiter_left : xiter_ntrav->xiter_right;
     }
@@ -711,9 +737,11 @@ static x_rbnode_iter xrbtree_dock_pos(x_rbtree_ptr xthis_ptr,
         *xit_select = 1;
     }
 
-    if (xthis_ptr->xfunc_kcmp(X_GET_VKEY(xiter_ntrav),
+    if (xthis_ptr->xcallback.xfunc_k_lesscomp(
+                              X_GET_VKEY(xiter_ntrav),
                               xrbt_vkey,
-                              xthis_ptr->xst_ksize))
+                              xthis_ptr->xst_ksize,
+                              xthis_ptr->xcallback.xctxt_t_callback))
     {
         return xiter_where;
     }
@@ -755,15 +783,18 @@ static x_rbnode_iter xrbtree_insert_nkey(x_rbtree_ptr xthis_ptr,
 
     //======================================
 
-    xiter_node = (x_rbnode_iter)xthis_ptr->xallocator.xfunc_alloc(
-            xrbt_vkey, sizeof(x_rbtree_node_t) + xthis_ptr->xst_ksize);
+    xiter_node = (x_rbnode_iter)xthis_ptr->xcallback.xfunc_n_memalloc(
+                                    xrbt_vkey,
+                                    sizeof(x_rbtree_node_t) + xthis_ptr->xst_ksize,
+                                    xthis_ptr->xcallback.xctxt_t_callback);
     XASSERT(XRBT_NULL != xiter_node);
 
-    xthis_ptr->xallocator.xfunc_vkey_copyfrom(
-                                        X_GET_VKEY(xiter_node),
-                                        xrbt_vkey,
-                                        xthis_ptr->xst_ksize,
-                                        xbt_move);
+    xthis_ptr->xcallback.xfunc_k_copyfrom(
+                                    X_GET_VKEY(xiter_node),
+                                    xrbt_vkey,
+                                    xthis_ptr->xst_ksize,
+                                    xbt_move,
+                                    xthis_ptr->xcallback.xctxt_t_callback);
 
     //======================================
 
@@ -808,52 +839,57 @@ static x_rbnode_iter xrbtree_insert_nkey(x_rbtree_ptr xthis_ptr,
 /**********************************************************/
 /**
  * @brief 创建 x_rbtree_t 对象。
- * 
- * @param [in ] xst_ksize  : 索引键数据类型所需的缓存大小（如 sizeof 值）。
- * @param [in ] xfunc_kcmp : 比较节点索引键值的回调接口（若为 XRBT_NULL，则取内部默认接口）。
- * @param [in ] xallocator : 节点缓存分配器（参看 xrbt_allocator_t 定义）。
- * 
+ *
+ * @param [in ] xst_ksize : 索引键数据类型所需的缓存大小（如 sizeof 值）。
+ * @param [in ] xcallback : 节点操作的相关回调函数（若某个回调函数为 XRBT_NULL，则取内部默认值）。
+ *
  * @return x_rbtree_ptr
  *         - 成功，返回 x_rbtree_t 对象；
  *         - 失败，返回 XRBT_NULL；
  */
-x_rbtree_ptr xrbtree_create(
-    xrbt_size_t xst_ksize, xfunc_vkey_cmp_t xfunc_kcmp, xrbt_allocator_t * xallocator)
+x_rbtree_ptr xrbtree_create(xrbt_size_t xst_ksize, xrbt_callback_t * xcallback)
 {
     x_rbtree_ptr xthis_ptr = XRBT_NULL;
 
     XASSERT((xst_ksize > 0) && (xst_ksize <= 0x7FFFFFFF));
 
-    xthis_ptr = (x_rbtree_ptr)xrbt_comm_alloc(XRBT_NULL, sizeof(x_rbtree_t));
+    xthis_ptr = (x_rbtree_ptr)xrbt_comm_node_memalloc(XRBT_NULL,
+                                                      sizeof(x_rbtree_t),
+                                                      XRBT_NULL);
     XASSERT(XRBT_NULL != xthis_ptr);
 
 #define XFUC_CHECK_SET(xfunc, xcheck, xdef) \
     do { xfunc = (XRBT_NULL != xcheck) ? xcheck : xdef; } while (0)
 
-    if (XRBT_NULL != xallocator)
+    if (XRBT_NULL != xcallback)
     {
-        XFUC_CHECK_SET(xthis_ptr->xallocator.xfunc_alloc,
-                       xallocator->xfunc_alloc,
-                       &xrbt_comm_alloc);
-        XFUC_CHECK_SET(xthis_ptr->xallocator.xfunc_dealloc,
-                       xallocator->xfunc_dealloc,
-                       &xrbt_comm_dealloc);
-        XFUC_CHECK_SET(xthis_ptr->xallocator.xfunc_vkey_copyfrom,
-                       xallocator->xfunc_vkey_copyfrom,
+        XFUC_CHECK_SET(xthis_ptr->xcallback.xfunc_n_memalloc,
+                       xcallback->xfunc_n_memalloc,
+                       &xrbt_comm_node_memalloc);
+        XFUC_CHECK_SET(xthis_ptr->xcallback.xfunc_n_memfree,
+                       xcallback->xfunc_n_memfree,
+                       &xrbt_comm_node_memfree);
+        XFUC_CHECK_SET(xthis_ptr->xcallback.xfunc_k_copyfrom,
+                       xcallback->xfunc_k_copyfrom,
                        &xrbt_comm_vkey_copyfrom);
-        XFUC_CHECK_SET(xthis_ptr->xallocator.xfunc_vkey_destruct,
-                       xallocator->xfunc_vkey_destruct,
+        XFUC_CHECK_SET(xthis_ptr->xcallback.xfunc_k_destruct,
+                       xcallback->xfunc_k_destruct,
                        &xrbt_comm_vkey_destruct);
+        XFUC_CHECK_SET(xthis_ptr->xcallback.xfunc_k_lesscomp,
+                       xcallback->xfunc_k_lesscomp,
+                       &xrbt_comm_vkey_compare);
+
+        xthis_ptr->xcallback.xctxt_t_callback = xcallback->xctxt_t_callback;
     }
     else
     {
-        xthis_ptr->xallocator.xfunc_alloc   = &xrbt_comm_alloc;
-        xthis_ptr->xallocator.xfunc_dealloc = &xrbt_comm_dealloc;
-        xthis_ptr->xallocator.xfunc_vkey_copyfrom = &xrbt_comm_vkey_copyfrom;
-        xthis_ptr->xallocator.xfunc_vkey_destruct = &xrbt_comm_vkey_destruct;
+        xthis_ptr->xcallback.xfunc_n_memalloc = &xrbt_comm_node_memalloc;
+        xthis_ptr->xcallback.xfunc_n_memfree  = &xrbt_comm_node_memfree ;
+        xthis_ptr->xcallback.xfunc_k_copyfrom = &xrbt_comm_vkey_copyfrom;
+        xthis_ptr->xcallback.xfunc_k_destruct = &xrbt_comm_vkey_destruct;
+        xthis_ptr->xcallback.xfunc_k_lesscomp = &xrbt_comm_vkey_compare ;
+        xthis_ptr->xcallback.xctxt_t_callback = XRBT_NULL;
     }
-
-    XFUC_CHECK_SET(xthis_ptr->xfunc_kcmp, xfunc_kcmp, &xrbt_comm_vkey_compare);
 
 #undef XFUC_CHECK_SET
 
@@ -877,7 +913,7 @@ xrbt_void_t xrbtree_destroy(x_rbtree_ptr xthis_ptr)
     XASSERT(XRBT_NULL != xthis_ptr);
 
     xrbtree_clear(xthis_ptr);
-    xrbt_comm_dealloc(xthis_ptr, sizeof(x_rbtree_t));
+    xrbt_comm_node_memfree(xthis_ptr, 0, XRBT_NULL);
 }
 
 /**********************************************************/
@@ -895,16 +931,6 @@ xrbt_void_t xrbtree_clear(x_rbtree_ptr xthis_ptr)
     X_SET_NIL(xthis_ptr, xthis_ptr->xiter_root );
     X_SET_NIL(xthis_ptr, xthis_ptr->xiter_lnode);
     X_SET_NIL(xthis_ptr, xthis_ptr->xiter_rnode);
-}
-
-/**********************************************************/
-/**
- * @brief 返回 x_rbtree_t 对象的 节点缓存分配器。
- */
-xrbt_allocator_t * xrbtree_allocator(x_rbtree_ptr xthis_ptr)
-{
-    XASSERT(XRBT_NULL != xthis_ptr);
-    return &xthis_ptr->xallocator;
 }
 
 /**********************************************************/
@@ -1227,10 +1253,13 @@ x_rbnode_iter xrbtree_find(x_rbtree_ptr xthis_ptr, xrbt_vkey_t xrbt_vkey)
     XASSERT((XRBT_NULL != xthis_ptr) && (XRBT_NULL != xrbt_vkey));
 
     x_rbnode_iter xiter_node = xrbtree_lower_bound(xthis_ptr, xrbt_vkey);
+
     if (X_IS_NIL(xiter_node) ||
-        xthis_ptr->xfunc_kcmp(xrbt_vkey,
+        xthis_ptr->xcallback.xfunc_k_lesscomp(
+                              xrbt_vkey,
                               X_GET_VKEY(xiter_node),
-                              xthis_ptr->xst_ksize)
+                              xthis_ptr->xst_ksize,
+                              xthis_ptr->xcallback.xctxt_t_callback)
        )
     {
         return X_GET_NIL(xthis_ptr);
@@ -1254,9 +1283,11 @@ x_rbnode_iter xrbtree_lower_bound(x_rbtree_ptr xthis_ptr,
 
     while (X_NOT_NIL(xiter_trav))
     {
-        if (xthis_ptr->xfunc_kcmp(X_GET_VKEY(xiter_trav),
+        if (xthis_ptr->xcallback.xfunc_k_lesscomp(
+                                  X_GET_VKEY(xiter_trav),
                                   xrbt_vkey,
-                                  xthis_ptr->xst_ksize))
+                                  xthis_ptr->xst_ksize,
+                                  xthis_ptr->xcallback.xctxt_t_callback))
         {
             xiter_trav = xiter_trav->xiter_right;
         }
@@ -1285,9 +1316,11 @@ x_rbnode_iter xrbtree_upper_bound(x_rbtree_ptr xthis_ptr,
 
     while (X_NOT_NIL(xiter_trav))
     {
-        if (xthis_ptr->xfunc_kcmp(xrbt_vkey,
+        if (xthis_ptr->xcallback.xfunc_k_lesscomp(
+                                  xrbt_vkey,
                                   X_GET_VKEY(xiter_trav),
-                                  xthis_ptr->xst_ksize))
+                                  xthis_ptr->xst_ksize,
+                                  xthis_ptr->xcallback.xctxt_t_callback))
         {
             xiter_node = xiter_trav;
             xiter_trav = xiter_trav->xiter_left;
