@@ -153,6 +153,26 @@ typedef struct x_rbtree_t
 
 ////////////////////////////////////////////////////////////////////////////////
 
+
+/**********************************************************/
+/**
+ * @brief 内存块 申请接口。
+ */
+static inline xrbt_void_t * xrbt_heap_alloc(xrbt_size_t xst_size)
+{
+    return malloc(xst_size);
+}
+
+/**********************************************************/
+/**
+ * @brief 内存块 释放接口。
+ */
+static inline xrbt_void_t xrbt_heap_free(xrbt_void_t * xmt_heap)
+{
+    if (XRBT_NULL != xmt_heap)
+        free(xmt_heap);
+}
+
 //====================================================================
 
 // 
@@ -175,22 +195,23 @@ static xrbt_void_t * xrbt_comm_node_memalloc(
                                 xrbt_size_t xst_nsize,
                                 xrbt_ctxt_t xrbt_ctxt)
 {
-    return (xrbt_void_t *)malloc(xst_nsize);
+    return xrbt_heap_alloc(xst_nsize);
 }
 
 /**********************************************************/
 /**
  * @brief 默认的 释放节点对象缓存的回调函数。
  *
- * @param [in ] xrbt_node : 待释放的节点对象缓存。
- * @param [in ] xst_nsize : 节点对象缓存的大小。
+ * @param [in ] xiter_node : 待释放的节点对象缓存。
+ * @param [in ] xnode_size : 节点对象缓存的大小。
+ * @param [in ] xrbt_ctxt  : 回调的上下文标识。
  */
 static xrbt_void_t xrbt_comm_node_memfree(
-                            xrbt_void_t * xrbt_node,
-                            xrbt_size_t xst_nsize,
+                            x_rbnode_iter xiter_node,
+                            xrbt_size_t xnode_size,
                             xrbt_ctxt_t xrbt_ctxt)
 {
-    free(xrbt_node);
+    xrbt_heap_free(xiter_node);
 }
 
 /**********************************************************/
@@ -853,9 +874,7 @@ x_rbtree_ptr xrbtree_create(xrbt_size_t xst_ksize, xrbt_callback_t * xcallback)
 
     XASSERT((xst_ksize > 0) && (xst_ksize <= 0x7FFFFFFF));
 
-    xthis_ptr = (x_rbtree_ptr)xrbt_comm_node_memalloc(XRBT_NULL,
-                                                      sizeof(x_rbtree_t),
-                                                      XRBT_NULL);
+    xthis_ptr = (x_rbtree_ptr)xrbt_heap_alloc(sizeof(x_rbtree_t));
     XASSERT(XRBT_NULL != xthis_ptr);
 
 #define XFUC_CHECK_SET(xfunc, xcheck, xdef) \
@@ -913,7 +932,7 @@ xrbt_void_t xrbtree_destroy(x_rbtree_ptr xthis_ptr)
     XASSERT(XRBT_NULL != xthis_ptr);
 
     xrbtree_clear(xthis_ptr);
-    xrbt_comm_node_memfree(xthis_ptr, 0, XRBT_NULL);
+    xrbt_heap_free(xthis_ptr);
 }
 
 /**********************************************************/

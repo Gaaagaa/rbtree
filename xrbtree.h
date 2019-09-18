@@ -82,11 +82,12 @@ typedef xrbt_void_t * (* xfunc_node_memalloc_t)(
 /**
  * @brief 释放节点对象缓存的回调函数类型。
  *
- * @param [in ] xrbt_node : 待释放的节点对象缓存。
- * @param [in ] xst_nsize : 节点对象缓存的大小。
+ * @param [in ] xiter_node : 待释放的节点对象缓存。
+ * @param [in ] xst_nsize  : 节点对象缓存的大小。
+ * @param [in ] xrbt_ctxt  : 回调的上下文标识。
  */
 typedef xrbt_void_t (* xfunc_node_memfree_t)(
-                            xrbt_void_t * xrbt_node,
+                            x_rbnode_iter xiter_node,
                             xrbt_size_t xst_nsize,
                             xrbt_ctxt_t xrbt_ctxt);
 
@@ -373,96 +374,76 @@ x_rbtree_ptr xrbtree_iter_tree(x_rbnode_iter xiter_node);
 ////////////////////////////////////////////////////////////////////////////////
 // declare C API for the rbtree node type
 
-#define XRBTREE_TYPE_API(_Kty)                                      \
-																	\
-xrbt_void_t xrbtree_xfunc_##_Kty##_copyfrom(                        \
-    xrbt_vkey_t xrbt_dkey,                                          \
-    xrbt_vkey_t xrbt_skey,                                          \
-    xrbt_size_t xrbt_size,                                          \
-    xrbt_bool_t xbt_move ,                                          \
-    xrbt_ctxt_t xrbt_ctxt)                                          \
-{                                                                   \
-    *(_Kty *)xrbt_dkey = *(_Kty *)xrbt_skey;                        \
-}                                                                   \
-                                                                    \
-xrbt_bool_t xrbtree_xfunc_##_Kty##_compare(                         \
-    xrbt_vkey_t xrbt_lkey,                                          \
-    xrbt_vkey_t xrbt_rkey,                                          \
-    xrbt_size_t xrbt_size,                                          \
-    xrbt_ctxt_t xrbt_ctxt)                                          \
-{                                                                   \
-    return (*(_Kty *)xrbt_lkey < *(_Kty *)xrbt_rkey);               \
-}                                                                   \
-                                                                    \
-inline xrbt_callback_t xrbtree_default_callback_##_Kty(             \
-    xrbt_ctxt_t xrbt_ctxt)                                          \
-{                                                                   \
-    xrbt_callback_t xcallback =                                     \
-    {                                                               \
-        /* .xfunc_n_memalloc = */ XRBT_NULL,                        \
-        /* .xfunc_n_memfree  = */ XRBT_NULL,                        \
-        /* .xfunc_k_copyfrom = */ &xrbtree_xfunc_##_Kty##_copyfrom, \
-        /* .xfunc_k_destruct = */ XRBT_NULL,                        \
-        /* .xfunc_k_lesscomp = */ &xrbtree_xfunc_##_Kty##_compare,  \
-        /* .xctxt_t_callback = */ xrbt_ctxt                         \
-    };                                                              \
-    return xcallback;                                               \
-}                                                                   \
-                                                                    \
-x_rbtree_ptr xrbtree_create_##_Kty(                                 \
-    xrbt_callback_t * xcallback)                                    \
-{                                                                   \
-    if (XRBT_NULL == xcallback)                                     \
-    {                                                               \
-        static xrbt_callback_t _S_callback =                        \
-            xrbtree_default_callback_##_Kty(XRBT_NULL);             \
-        xcallback = &_S_callback;                                   \
-    }                                                               \
-                                                                    \
-    return xrbtree_create(sizeof(_Kty), xcallback);                 \
-}                                                                   \
-                                                                    \
-inline x_rbnode_iter xrbtree_insert_##_Kty(                         \
-    x_rbtree_ptr xthis_ptr, _Kty xkey, xrbt_bool_t * xbt_ok)        \
-{                                                                   \
-    return xrbtree_insert(xthis_ptr, (_Kty *)(&xkey), xbt_ok);      \
-}                                                                   \
-                                                                    \
-inline x_rbnode_iter xrbtree_insert_m_##_Kty(                       \
-    x_rbtree_ptr xthis_ptr, _Kty xkey, xrbt_bool_t * xbt_ok)        \
-{                                                                   \
-    return xrbtree_insert_mkey(xthis_ptr, (_Kty *)(&xkey), xbt_ok); \
-}                                                                   \
-                                                                    \
-inline xrbt_bool_t xrbtree_erase_##_Kty(                            \
-    x_rbtree_ptr xthis_ptr, _Kty xkey)                              \
-{                                                                   \
-    return xrbtree_erase_vkey(xthis_ptr, (_Kty *)(&xkey));          \
-}                                                                   \
-                                                                    \
-inline x_rbnode_iter xrbtree_find_##_Kty(                           \
-    x_rbtree_ptr xthis_ptr, _Kty xkey)                              \
-{                                                                   \
-    return xrbtree_find(xthis_ptr, (_Kty *)(&xkey));                \
-}                                                                   \
-                                                                    \
-inline x_rbnode_iter xrbtree_lower_bound_##_Kty(                    \
-    x_rbtree_ptr xthis_ptr, _Kty xkey)                              \
-{                                                                   \
-    return xrbtree_lower_bound(xthis_ptr, (_Kty *)(&xkey));         \
-}                                                                   \
-                                                                    \
-inline x_rbnode_iter xrbtree_upper_bound_##_Kty(                    \
-    x_rbtree_ptr xthis_ptr, _Kty xkey)                              \
-{                                                                   \
-    return xrbtree_upper_bound(xthis_ptr, (_Kty *)(&xkey));         \
-}                                                                   \
-                                                                    \
-inline _Kty xrbtree_ikey_##_Kty(                                    \
-    x_rbnode_iter xiter_node)                                       \
-{                                                                   \
-    return *(_Kty *)xrbtree_iter_vkey(xiter_node);                  \
-}                                                                   \
+#define XRBTREE_CTYPE_API(_Kty, _Static, _Inline, _Suffix)                     \
+                                                                               \
+_Static _Inline xrbt_bool_t xrbtree_insert_##_Suffix(                          \
+    x_rbtree_ptr xthis_ptr, _Kty xkey)                                         \
+{                                                                              \
+    xrbt_bool_t xbt_ok = XRBT_FALSE;                                           \
+    xrbtree_insert(xthis_ptr, (xrbt_vkey_t)(&xkey), &xbt_ok);                  \
+    return xbt_ok;                                                             \
+}                                                                              \
+                                                                               \
+_Static _Inline xrbt_bool_t xrbtree_erase_##_Suffix(                           \
+    x_rbtree_ptr xthis_ptr, _Kty xkey)                                         \
+{                                                                              \
+    return xrbtree_erase_vkey(xthis_ptr, (xrbt_vkey_t)(&xkey));                \
+}                                                                              \
+                                                                               \
+_Static _Inline x_rbnode_iter xrbtree_find_##_Suffix(                          \
+    x_rbtree_ptr xthis_ptr, _Kty xkey)                                         \
+{                                                                              \
+    return xrbtree_find(xthis_ptr, (xrbt_vkey_t)(&xkey));                      \
+}                                                                              \
+                                                                               \
+_Static _Inline x_rbnode_iter xrbtree_lower_bound_##_Suffix(                   \
+    x_rbtree_ptr xthis_ptr, _Kty xkey)                                         \
+{                                                                              \
+    return xrbtree_lower_bound(xthis_ptr, (xrbt_vkey_t)(&xkey));               \
+}                                                                              \
+                                                                               \
+_Static _Inline x_rbnode_iter xrbtree_upper_bound_##_Kty(                      \
+    x_rbtree_ptr xthis_ptr, _Kty xkey)                                         \
+{                                                                              \
+    return xrbtree_upper_bound(xthis_ptr, (xrbt_vkey_t)(&xkey));               \
+}                                                                              \
+                                                                               \
+_Static _Inline _Kty xrbtree_iter_##_Suffix(                                   \
+    x_rbnode_iter xiter_node)                                                  \
+{                                                                              \
+    return *(_Kty *)xrbtree_iter_vkey(xiter_node);                             \
+}                                                                              \
+
+#define XRBTREE_XFUNC_COPYFROM(_Kty, _Static, _Suffix)                         \
+_Static xrbt_void_t xrbtree_xfunc_##_Suffix##_copyfrom(                        \
+    xrbt_vkey_t xrbt_dkey,                                                     \
+    xrbt_vkey_t xrbt_skey,                                                     \
+    xrbt_size_t xrbt_size,                                                     \
+    xrbt_bool_t xbt_move ,                                                     \
+    xrbt_ctxt_t xrbt_ctxt)                                                     \
+{                                                                              \
+    *(_Kty *)xrbt_dkey = *(_Kty *)xrbt_skey;                                   \
+}                                                                              \
+
+#define XRBTREE_XFUNC_LESS_COMPARE(_Kty, _Static, _Suffix)                     \
+_Static xrbt_bool_t xrbtree_xfunc_##_Suffix##_compare(                         \
+    xrbt_vkey_t xrbt_lkey,                                                     \
+    xrbt_vkey_t xrbt_rkey,                                                     \
+    xrbt_size_t xrbt_size,                                                     \
+    xrbt_ctxt_t xrbt_ctxt)                                                     \
+{                                                                              \
+    return (*(_Kty *)xrbt_lkey < *(_Kty *)xrbt_rkey);                          \
+}                                                                              \
+
+#define XRBTREE_XFUNC_GREATER_COMPARE(_Kty, _Static, _Suffix)                  \
+_Static xrbt_bool_t xrbtree_xfunc_##_Suffix##_compare(                         \
+    xrbt_vkey_t xrbt_lkey,                                                     \
+    xrbt_vkey_t xrbt_rkey,                                                     \
+    xrbt_size_t xrbt_size,                                                     \
+    xrbt_ctxt_t xrbt_ctxt)                                                     \
+{                                                                              \
+    return (*(_Kty *)xrbt_lkey > *(_Kty *)xrbt_rkey);                          \
+}                                                                              \
 
 ////////////////////////////////////////////////////////////////////////////////
 // declare C++ API for the rbtree node type
