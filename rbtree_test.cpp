@@ -36,7 +36,11 @@ using xtime_value = std::chrono::microseconds;
 
 #define xtime_dcast  std::chrono::duration_cast< xtime_value >
 
-XRBTREE_TYPE_API(int)
+////////////////////////////////////////////////////////////////////////////////
+
+XRBTREE_CTYPE_API(int, static, inline, int)
+XRBTREE_XFUNC_COPYFROM(int, static, int)
+XRBTREE_XFUNC_LESS_COMPARE(int, static, ltint)
 
 long long xalloc_count = 0;
 
@@ -48,13 +52,15 @@ xrbt_void_t * xalloc_memalloc(xrbt_vkey_t xrbt_vkey,
     return malloc(xst_nsize);
 }
 
-xrbt_void_t xalloc_memfree(xrbt_void_t * xrbt_node,
+xrbt_void_t xalloc_memfree(x_rbnode_iter xrbt_node,
                            xrbt_size_t xst_nsize,
                            xrbt_ctxt_t xrbt_ctxt)
 {
     xalloc_count -= 1;
     free(xrbt_node);
 }
+
+////////////////////////////////////////////////////////////////////////////////
 
 void test_xrbtree(int max_insert)
 {
@@ -65,17 +71,23 @@ void test_xrbtree(int max_insert)
 
     //======================================
 
-    xrbt_callback_t xtree_alloc = xrbtree_default_callback_int(XRBT_NULL);
-    xtree_alloc.xfunc_n_memalloc = &xalloc_memalloc;
-    xtree_alloc.xfunc_n_memfree  = &xalloc_memfree;
+    xrbt_callback_t xcallback =
+    {
+        /* .xfunc_n_memalloc = */ &xalloc_memalloc,
+        /* .xfunc_n_memfree  = */ &xalloc_memfree,
+        /* .xfunc_k_copyfrom = */ &xrbtree_xfunc_int_copyfrom,
+        /* .xfunc_k_destruct = */ XRBT_NULL,
+        /* .xfunc_k_lesscomp = */ &xrbtree_xfunc_ltint_compare,
+        /* .xctxt_t_callback = */ XRBT_NULL
+    };
 
-    x_rbtree_ptr xtree_ptr = xrbtree_create_int(&xtree_alloc);
+    x_rbtree_ptr xtree_ptr = xrbtree_create(sizeof(int), &xcallback);
 
     // insert
     xtm_begin = xtime_clock::now();
     for (int i = 1; i <= max_insert; ++i)
     {
-        xrbtree_insert_int(xtree_ptr, i, XRBT_NULL);
+        xrbtree_insert_int(xtree_ptr, i);
     }
     xtm_value = xtime_dcast(xtime_clock::now() - xtm_begin);
     printf("[ C ] insert   time cost: %8d\n", (int)xtm_value.count());
@@ -106,7 +118,7 @@ void test_xrbtree(int max_insert)
     {
         x_rbnode_iter xiter = xrbtree_find_int(xtree_ptr, i);
         if (xiter != xiter_end)
-            testvalue += xrbtree_ikey_int(xiter);
+            testvalue += xrbtree_iter_int(xiter);
     }
     xtm_value = xtime_dcast(xtime_clock::now() - xtm_begin);
     printf("[ C ] find     time cost: %8d ==> sum  : %lld\n", (int)xtm_value.count(), testvalue);
@@ -118,7 +130,7 @@ void test_xrbtree(int max_insert)
          xiter != xrbtree_end(xtree_ptr);
          xiter = xrbtree_next(xiter))
     {
-        testvalue += xrbtree_ikey_int(xiter);
+        testvalue += xrbtree_iter_int(xiter);
     }
     xtm_value = xtime_dcast(xtime_clock::now() - xtm_begin);
     printf("[ C ] iterator time cost: %8d ==> sum  : %lld\n", (int)xtm_value.count(), testvalue);
